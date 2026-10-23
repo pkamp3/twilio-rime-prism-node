@@ -1,0 +1,21 @@
+{
+  "name": "twilio-rime-prism-node",
+  "version": "0.1.0",
+  "description": "Talk to Rime Prism over the phone with Twilio Media Streams",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/formbody": "^8.0.0",
+    "@fastify/websocket": "^11.0.0",
+    "@rimelabs/sdk": "0.1.0-alpha.20",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.0.0"
+  }
+}
