@@ -201,14 +201,17 @@ function onEvent(session, { payload }) {
 // Open one Prism session for the call, greet the caller, and run the conversation.
 async function converse(callerAudio, playback, memory = '') {
     const instructions = memory
-        ? `${INSTRUCTIONS}\nThis caller has called before. Here's what you remember about them. `
-            + `Greet them as a returning caller, and bring up one thing you remember:\n${memory}`
+        ? `${INSTRUCTIONS}\nThis caller has called before. Here's what you remember about them:\n${memory}`
         : INSTRUCTIONS;
     const session = await rime.realtime.connect({ voice: VOICE, instructions, tools: [TIME_TOOL] });
 
     // Quote this ID if you ever need Rime's help with a call.
     console.log('Prism session', session.info.sessionId);
-    session.requestReply({ instruction: `Say, word for word: "${OPENING}"` })
+    // New callers get the opening word for word. Returning callers get a welcome back instead.
+    const greeting = memory
+        ? 'Say "Ahoy, welcome back!", then ask one short question about something you remember. Stop after the question.'
+        : `Say, word for word: "${OPENING}"`;
+    session.requestReply({ instruction: greeting })
         .catch((error) => console.error('Greeting failed:', error.message));
     await runConversation(session, { source: callerAudio, playback, onEvent: (event) => onEvent(session, event) });
 }
