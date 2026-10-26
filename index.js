@@ -53,9 +53,39 @@ fastify.get('/', async () => ({ message: 'Twilio Media Stream Server is running!
 // Some tunnels rewrite the Host header. Set PUBLIC_HOST if you use one.
 fastify.all('/incoming-call', async (request, reply) => {
     const host = process.env.PUBLIC_HOST || request.headers['x-forwarded-host'] || request.headers.host;
+    // Transcribe both sides of the call into Conversation Intelligence, if you set it up.
+    // The labels mark the caller as the customer, so Memory files the call under their profile.
+    const config = process.env.CONVERSATION_CONFIGURATION_ID;
+    const transcription = config
+        ? `<Start><Transcription conversationConfiguration="${config}" inboundTrackLabel="customer" outboundTrackLabel="ai_agent" /></Start>`
+        : '';
+    // Pass the caller's number to the stream, so we can look them up in Memory.
+    const from = request.body?.From ?? '';
     reply.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response><Connect><Stream url="wss://${host}/media-stream" /></Connect></Response>`);
+<Response>${transcription}<Connect><Stream url="wss://${host}/media-stream"><Parameter name="from" value="${from}" /></Stream></Connect></Response>`);
 });
+
+// Find what Conversation Memory knows about this caller. Returns '' for a new caller.
+async function recallCaller(phone) {
+    const store = process.env.MEMORY_STORE_ID;
+    if (!store || !phone) return '';
+    const base = `https://memory.twilio.com/v1/Stores/${store}/Profiles`;
+    const auth = 'Basic ' + Buffer.from(`${process.env.TWILIO_API_KEY}:${process.env.TWILIO_API_SECRET}`).toString('base64');
+    const post = async (url, body) => {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { Authorization: auth, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error(`Memory returned ${response.status}`);
+        return response.json();
+    };
+    const { profiles } = await post(`${base}/Lookup`, { idType: 'phone', value: phone });
+    if (!profiles?.length) return '';
+    const memory = await post(`${base}/${profiles[0]}/Recall`, { observationsLimit: 10, summariesLimit: 3 });
+    return [...memory.observations.map((o) => o.content), ...memory.summaries.map((s) => s.content)]
+        .map((line) => `- ${line}`).join('\n');
+}
 
 // Queue the caller's audio from Twilio until Prism needs it.
 function createCallerAudio() {
@@ -169,8 +199,12 @@ function onEvent(session, { payload }) {
 }
 
 // Open one Prism session for the call, greet the caller, and run the conversation.
-async function converse(callerAudio, playback) {
-    const session = await rime.realtime.connect({ voice: VOICE, instructions: INSTRUCTIONS, tools: [TIME_TOOL] });
+async function converse(callerAudio, playback, memory = '') {
+    const instructions = memory
+        ? `${INSTRUCTIONS}\nThis caller has called before. Here's what you remember about them. `
+            + `Greet them as a returning caller, and bring up one thing you remember:\n${memory}`
+        : INSTRUCTIONS;
+    const session = await rime.realtime.connect({ voice: VOICE, instructions, tools: [TIME_TOOL] });
 
     // Quote this ID if you ever need Rime's help with a call.
     console.log('Prism session', session.info.sessionId);
@@ -191,8 +225,14 @@ fastify.register(async (fastify) => {
                 case 'start':
                     console.log('Incoming stream has started', data.start.streamSid);
                     playback = createTwilioPlayback(connection, data.start.streamSid);
+                    // Recall the caller first. If Memory fails, the call carries on without it.
                     // When the Prism session ends, close the stream. Twilio then hangs up.
-                    converse(callerAudio, playback)
+                    recallCaller(data.start.customParameters?.from)
+                        .catch((error) => { console.error('Recall failed:', error.message); return ''; })
+                        .then((memory) => {
+                            if (memory) console.log('Recalled:\n' + memory);
+                            return converse(callerAudio, playback, memory);
+                        })
                         .catch((error) => console.error('Conversation failed:', error))
                         .finally(() => connection.close());
                     break;
