@@ -12,6 +12,11 @@ if (!process.env.RIME_API_KEY) {
     process.exit(1);
 }
 
+if (process.env.MEMORY_STORE_ID && !(process.env.TWILIO_API_KEY && process.env.TWILIO_API_SECRET)) {
+    console.error('MEMORY_STORE_ID is set, so Memory also needs TWILIO_API_KEY and TWILIO_API_SECRET in the .env file.');
+    process.exit(1);
+}
+
 const VOICE = 'astra';
 const PORT = process.env.PORT || 5050;
 
