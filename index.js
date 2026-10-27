@@ -71,10 +71,13 @@ fastify.all('/incoming-call', async (request, reply) => {
         ? `<Start><Transcription conversationConfiguration="${escapeXml(config)}" inboundTrackLabel="customer" outboundTrackLabel="ai_agent" /></Start>`
             + `<Say>${escapeXml(DISCLOSURE)}</Say>`
         : '';
-    // Pass the caller's number to the stream, so we can look them up in Memory.
-    const from = escapeXml(request.body?.From ?? request.query?.From ?? '');
+    // If Memory is set up, pass the caller's number to the stream, so we can look them up.
+    const from = request.body?.From ?? request.query?.From ?? '';
+    const stream = process.env.MEMORY_STORE_ID
+        ? `<Stream url="wss://${host}/media-stream"><Parameter name="from" value="${escapeXml(from)}" /></Stream>`
+        : `<Stream url="wss://${host}/media-stream" />`;
     reply.type('text/xml').send(`<?xml version="1.0" encoding="UTF-8"?>
-<Response>${transcription}<Connect><Stream url="wss://${host}/media-stream"><Parameter name="from" value="${from}" /></Stream></Connect></Response>`);
+<Response>${transcription}<Connect>${stream}</Connect></Response>`);
 });
 
 // Give Memory this long, then carry on without it, so a slow lookup never means dead air.
