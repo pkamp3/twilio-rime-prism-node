@@ -74,7 +74,7 @@ fastify.all('/incoming-call', async (request, reply) => {
 
 // Give Memory this long, then carry on without it, so a slow lookup never means dead air.
 const RECALL_TIMEOUT_MS = 1500;
-// Keep the recalled notes short. Prism also limits a single instruction to 4,000 characters.
+// Keep the recalled notes short, so the prompt stays small and the first reply stays quick.
 const MEMORY_MAX_CHARS = 1500;
 
 // Find what Conversation Memory knows about this caller. Returns '' for a new caller.
