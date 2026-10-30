@@ -186,26 +186,38 @@ fastify.register(async (fastify) => {
         let playback;
 
         connection.on('message', (message) => {
-            const data = JSON.parse(message);
-            switch (data.event) {
-                case 'start':
-                    console.log('Incoming stream has started', data.start.streamSid);
-                    playback = createTwilioPlayback(connection, data.start.streamSid);
-                    // When the Prism session ends, close the stream. Twilio then hangs up.
-                    converse(callerAudio, playback)
-                        .catch((error) => console.error('Conversation failed:', error))
-                        .finally(() => connection.close());
-                    break;
-                // Forward every frame, including silence.
-                case 'media':
-                    callerAudio.push({
-                        data: mulawToPcm16(Buffer.from(data.media.payload, 'base64')),
-                        format: { sampleRate: 8000 },
-                    });
-                    break;
-                case 'mark':
-                    playback?.onMark(data.mark.name);
-                    break;
+            // One malformed message must not crash the server and drop every other call.
+            let data;
+            try {
+                data = JSON.parse(message);
+            } catch {
+                console.error('Ignoring a message that is not JSON');
+                return;
+            }
+            try {
+                switch (data.event) {
+                    case 'start':
+                        if (playback) return; // One conversation per stream
+                        console.log('Incoming stream has started', data.start.streamSid);
+                        playback = createTwilioPlayback(connection, data.start.streamSid);
+                        // When the Prism session ends, close the stream. Twilio then hangs up.
+                        converse(callerAudio, playback)
+                            .catch((error) => console.error('Conversation failed:', error))
+                            .finally(() => connection.close());
+                        break;
+                    // Forward every frame, including silence.
+                    case 'media':
+                        callerAudio.push({
+                            data: mulawToPcm16(Buffer.from(data.media.payload, 'base64')),
+                            format: { sampleRate: 8000 },
+                        });
+                        break;
+                    case 'mark':
+                        playback?.onMark(data.mark.name);
+                        break;
+                }
+            } catch (error) {
+                console.error(`Bad ${data?.event} message:`, error.message);
             }
         });
 

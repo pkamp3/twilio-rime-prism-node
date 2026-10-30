@@ -20,8 +20,8 @@ function encodeMulaw(sample) {
     return ~(sign | (exponent << 4) | mantissa) & 0xff;
 }
 
-// Keep every third sample (24 kHz to 8 kHz). But first, filter out everything above 4 kHz.
-// This low-pass filter cuts off at 3.6 kHz. https://en.wikipedia.org/wiki/G.711
+// Low-pass filter for going from 24 kHz to 8 kHz. It keeps the 300-3,400 Hz phone voice band
+// (ITU-T G.712), cuts off at 3.6 kHz, and removes nearly everything 8 kHz audio can't carry.
 const TAPS = 95;
 const FILTER = Array.from({ length: TAPS }, (_, i) => {
     const n = i - (TAPS - 1) / 2;
